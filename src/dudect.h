@@ -153,13 +153,24 @@ extern uint8_t do_one_computation(uint8_t *data);
 #define DUDECT_TRACE (0)
 
 #include <assert.h>
-#include <fcntl.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+
+#if defined(_WIN32)
+  /* Windows: BCryptGenRandom is the CSPRNG equivalent of /dev/urandom. */
+  #include <windows.h>
+  #include <bcrypt.h>
+  #if defined(_MSC_VER)
+    #pragma comment(lib, "bcrypt.lib")
+  #endif
+#else
+  /* POSIX: /dev/urandom CSPRNG. */
+  #include <fcntl.h>
+  #include <unistd.h>
+#endif
 
 /*
   Online Welch's t-test
@@ -227,6 +238,30 @@ static void prepare_percentiles(dudect_ctx_t *ctx) {
   }
 }
 
+/* Cryptographically secure random bytes.
+   - Windows: BCryptGenRandom with system-preferred RNG (CSPRNG, same
+     quality guarantees as /dev/urandom).
+   - Linux/macOS: /dev/urandom.
+*/
+#if defined(_WIN32)
+void randombytes(uint8_t *x, size_t how_much) {
+  /* BCryptGenRandom takes ULONG length, so chunk large requests. */
+  while (how_much > 0) {
+    ULONG n = (how_much > (size_t)0xFFFFFFFFu)
+                  ? 0xFFFFFFFFu
+                  : (ULONG)how_much;
+    NTSTATUS status = BCryptGenRandom(
+        NULL, x, n, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (!BCRYPT_SUCCESS(status)) {
+      fprintf(stderr, "dudect: BCryptGenRandom failed (0x%08lx)\n",
+              (unsigned long)status);
+      abort();
+    }
+    x += n;
+    how_much -= n;
+  }
+}
+#else
 /* this comes from ebacs */
 void randombytes(uint8_t *x, size_t how_much) {
   ssize_t i;
@@ -259,6 +294,7 @@ void randombytes(uint8_t *x, size_t how_much) {
     xlen -= i;
   }
 }
+#endif /* defined(_WIN32) */
 
 uint8_t randombit(void) {
   uint8_t ret = 0;
