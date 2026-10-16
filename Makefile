@@ -14,6 +14,18 @@ examples/aesbitsliced/xor_afternm_aes128ctr.o
 #CFLAGS	= -Weverything -fsanitize=memory -fno-omit-frame-pointer -g -std=c11
 CFLAGS	= -std=c11
 LIBS	= -lm
+# src/dudect.h uses BCryptGenRandom on Windows, which needs -lbcrypt
+# when linking with gcc/mingw (MSVC auto-links via #pragma comment).
+# Detect Windows target incl. cross-compiles, keep Linux behaviour unchanged.
+TARGET	:= $(shell $(CC) -dumpmachine 2>/dev/null)
+ifneq (,$(findstring mingw,$(TARGET))$(findstring windows,$(TARGET))$(findstring msys,$(TARGET))$(findstring cygwin,$(TARGET)))
+LIBS	+= -lbcrypt
+endif
+ifeq ($(OS),Windows_NT)
+ifeq (,$(findstring bcrypt,$(LIBS)))
+LIBS	+= -lbcrypt
+endif
+endif
 #LDFLAGS	= -fsanitize=memory -fno-omit-frame-pointer -g 
 #LDFLAGS = -Weverything -std=c11
 LDFLAGS = -std=c11
